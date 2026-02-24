@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Progress Protocol</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React & ReactDOM (Standalone) -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  
+  <!-- Babel for JSX Compilation in Browser -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    /* Global CSS for Custom Cursor & Animations */
+    * {
+      cursor: none !important;
+    }
+    body {
+      background-color: #050507;
+      color: #fff;
+      margin: 0;
+      min-height: 100vh;
+    }
+    .cursor-inner {
+      width: 8px;
+      height: 8px;
+      transform: translate(-50%, -50%) scale(var(--cursor-scale, 1));
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 1);
+      border: 1px solid rgba(255, 255, 255, 1);
+      box-shadow: 0 0 10px 2px rgba(255, 255, 255, 0.5);
+      transition: width 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                  height 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                  transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+                  background 0.3s ease,
+                  border-color 0.3s ease,
+                  box-shadow 0.3s ease;
+    }
+    .cursor-inner.hover {
+      width: 14px;
+      height: 14px;
+      background: rgba(255, 255, 255, 1);
+      border-color: rgba(255, 255, 255, 1);
+      box-shadow: 0 0 12px 3px rgba(255, 255, 255, 0.6);
+    }
+    .cursor-inner.active {
+      --cursor-scale: 0.7;
+      background: rgba(255, 255, 255, 0.8);
+      border-color: rgba(255, 255, 255, 0.8);
+    }
+
+    /* Task Success Animation */
+    @keyframes successPulse {
+      0% { transform: scale(1); background-color: #2C2C2E; box-shadow: 0 0 0 rgba(48, 209, 88, 0); }
+      50% { transform: scale(1.03); background-color: rgba(48, 209, 88, 0.2); box-shadow: 0 0 25px rgba(48, 209, 88, 0.5); border-color: rgba(48, 209, 88, 0.8); }
+      100% { transform: scale(1); background-color: rgba(48, 209, 88, 0.1); box-shadow: 0 0 15px rgba(48, 209, 88, 0.15); border-color: rgba(48, 209, 88, 0.4); }
+    }
+    .task-success {
+      animation: successPulse 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+
+    /* Smooth Overlay Blur Animation */
+    @keyframes fadeInOverlay {
+      from { opacity: 0; backdrop-filter: blur(0px); -webkit-backdrop-filter: blur(0px); }
+      to { opacity: 1; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+    }
+    .animate-blur-overlay {
+      animation: fadeInOverlay 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    // --- Standalone Icons Component ---
+    const Icon = ({ path, size = 24, className = '', strokeWidth = 2 }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
+        {path}
+      </svg>
+    );
+
+    const ChevronLeftIcon = (props) => <Icon {...props} path={<path d="m15 18-6-6 6-6"/>} />;
+    const ChevronRightIcon = (props) => <Icon {...props} path={<path d="m9 18 6-6-6-6"/>} />;
+    const CalendarIcon = (props) => <Icon {...props} path={<><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></>} />;
+    const CheckIcon = (props) => <Icon {...props} path={<path d="M20 6 9 17l-5-5"/>} />;
+    const Trash2Icon = (props) => <Icon {...props} path={<><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></>} />;
+    const PlusIcon = (props) => <Icon {...props} path={<><path d="M5 12h14"/><path d="M12 5v14"/></>} />;
+    const QuoteIcon = (props) => <Icon {...props} path={<><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3c0 1 0 1 1 1z"/></>} />;
+
+    // Fixed tasks for every new day
+    const FIXED_TASKS = [
+      { id: 'f1', text: 'Morning stretching', isFixed: true, completed: false },
+      { id: 'f2', text: 'Min 2 min plank', isFixed: true, completed: false },
+      { id: 'f3', text: 'English podcast', isFixed: true, completed: false },
+      { id: 'f4', text: 'IELTS practice (Goal: 6.5+)', isFixed: true, completed: false },
+      { id: 'f5', text: 'GYM', isFixed: true, completed: false },
+      { id: 'f6', text: 'Hand gripper', isFixed: true, completed: false },
+    ];
+
+    function App() {
+      // 1. TAM KALDIĞIN GÜNÜ HATIRLAMA
+      const [currentDate, setCurrentDate] = useState(() => {
+        const savedDate = localStorage.getItem('progressProtocolLastDate');
+        return savedDate ? new Date(savedDate) : new Date();
+      });
+
+      useEffect(() => {
+        localStorage.setItem('progressProtocolLastDate', currentDate.toISOString());
+      }, [currentDate]);
+      
+      // 2. TÜM VERİLERİ YEREL HAFIZADAN ÇEKME
+      const [daysData, setDaysData] = useState(() => {
+        const savedData = localStorage.getItem('progressProtocolData');
+        return savedData ? JSON.parse(savedData) : {};
+      });
+
+      const [newTaskText, setNewTaskText] = useState('');
+      
+      const cursorRef = useRef(null);
+      const cursorInnerRef = useRef(null);
+
+      const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+      const [calendarViewDate, setCalendarViewDate] = useState(new Date());
+
+      // Custom Cursor Logic
+      useEffect(() => {
+        const cursor = cursorRef.current;
+        const inner = cursorInnerRef.current;
+        if (!cursor || !inner) return;
+
+        const onMouseMove = (e) => {
+          cursor.style.transform = `translate3d(${e.clientX}px, ${e.clientY}px, 0)`;
+          
+          const isHoverable = e.target.closest('button, input, textarea, .cursor-pointer');
+          if (isHoverable) {
+            inner.classList.add('hover');
+          } else {
+            inner.classList.remove('hover');
+          }
+        };
+
+        const onMouseDown = () => inner.classList.add('active');
+        const onMouseUp = () => inner.classList.remove('active');
+        
+        const onMouseEnter = () => cursor.style.opacity = '1';
+        const onMouseLeave = () => cursor.style.opacity = '0';
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mousedown', onMouseDown);
+        window.addEventListener('mouseup', onMouseUp);
+        document.body.addEventListener('mouseenter', onMouseEnter);
+        document.body.addEventListener('mouseleave', onMouseLeave);
+
+        return () => {
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mousedown', onMouseDown);
+          window.removeEventListener('mouseup', onMouseUp);
+          document.body.removeEventListener('mouseenter', onMouseEnter);
+          document.body.removeEventListener('mouseleave', onMouseLeave);
+        };
+      }, []);
+
+      const formatDateKey = (date) => {
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      };
+
+      const dateKey = formatDateKey(currentDate);
+
+      // Veriyi çekerken LocalStorage'da eski bir kayıt varsa yeni eklenen sabit maddeleri de dahil et (Smart Merge)
+      let currentDayData = daysData[dateKey] || {
+        tasks: [...FIXED_TASKS],
+        water: 0,
+        note: ''
+      };
+
+      const existingTaskIds = currentDayData.tasks.map(t => t.id);
+      const missingFixedTasks = FIXED_TASKS.filter(ft => !existingTaskIds.includes(ft.id));
+      
+      if (missingFixedTasks.length > 0) {
+        currentDayData = {
+          ...currentDayData,
+          tasks: [...currentDayData.tasks, ...missingFixedTasks]
+        };
+      }
+
+      // Updates state AND saves to localStorage immediately (Smart Merge uygulanarak kaydeder)
+      const updateCurrentDayData = (updates) => {
+        setDaysData(prev => {
+          let prevDayData = prev[dateKey] || { tasks: [...FIXED_TASKS], water: 0, note: '' };
+          
+          // Güncelleme yaparken de eksik sabit görev varsa onları güvenceye al
+          const currentTaskIds = prevDayData.tasks.map(t => t.id);
+          const missing = FIXED_TASKS.filter(ft => !currentTaskIds.includes(ft.id));
+          if (missing.length > 0) {
+              prevDayData = { ...prevDayData, tasks: [...prevDayData.tasks, ...missing] };
+          }
+
+          const newData = {
+            ...prev,
+            [dateKey]: {
+              ...prevDayData,
+              ...updates
+            }
+          };
+          localStorage.setItem('progressProtocolData', JSON.stringify(newData));
+          return newData;
+        });
+      };
+
+      const goToPreviousDay = () => {
+        const prev = new Date(currentDate);
+        prev.setDate(currentDate.getDate() - 1);
+        setCurrentDate(prev);
+      };
+
+      const goToNextDay = () => {
+        const next = new Date(currentDate);
+        next.setDate(currentDate.getDate() + 1);
+        setCurrentDate(next);
+      };
+
+      const daysInMonth = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() + 1, 0).getDate();
+      const firstDayOfMonth = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), 1).getDay();
+      const startingBlankDays = (firstDayOfMonth + 6) % 7;
+
+      const changeCalendarMonth = (offset) => {
+        const newDate = new Date(calendarViewDate);
+        newDate.setMonth(newDate.getMonth() + offset);
+        setCalendarViewDate(newDate);
+      };
+
+      const selectDate = (day) => {
+        const newDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), day);
+        setCurrentDate(newDate);
+        setIsCalendarOpen(false);
+      };
+
+      const toggleCalendar = () => {
+        if (!isCalendarOpen) setCalendarViewDate(new Date(currentDate));
+        setIsCalendarOpen(!isCalendarOpen);
+      };
+
+      const toggleTask = (taskId) => {
+        const updatedTasks = currentDayData.tasks.map(task => 
+          task.id === taskId ? { ...task, completed: !task.completed } : task
+        );
+        updateCurrentDayData({ tasks: updatedTasks });
+      };
+
+      const addTask = (e) => {
+        e.preventDefault();
+        if (!newTaskText.trim()) return;
+        
+        const newTask = {
+          id: `custom-${Date.now()}`,
+          text: newTaskText.trim(),
+          isFixed: false,
+          completed: false
+        };
+        
+        updateCurrentDayData({ tasks: [...currentDayData.tasks, newTask] });
+        setNewTaskText('');
+      };
+
+      const removeTask = (taskId) => {
+        const updatedTasks = currentDayData.tasks.filter(task => task.id !== taskId);
+        updateCurrentDayData({ tasks: updatedTasks });
+      };
+
+      const updateWater = (amount) => {
+        const newWater = Math.max(0, currentDayData.water + amount);
+        updateCurrentDayData({ water: parseFloat(newWater.toFixed(1)) });
+      };
+
+      return (
+        <>
+          <div 
+            ref={cursorRef} 
+            className="fixed top-0 left-0 pointer-events-none z-[9999] will-change-transform transition-opacity duration-300 hidden md:block"
+          >
+            <div ref={cursorInnerRef} className="cursor-inner"></div>
+          </div>
+
+          {/* Modern Ambient Gradient Background */}
+          <div className="fixed inset-0 z-[-1] bg-[#050507] overflow-hidden pointer-events-none">
+            <div className="absolute top-[-20%] left-[-10%] w-[60vw] h-[60vw] rounded-full bg-[#0A84FF] opacity-[0.18] blur-[120px]"></div>
+            <div className="absolute bottom-[-20%] right-[-10%] w-[60vw] h-[60vw] rounded-full bg-[#BF5AF2] opacity-[0.15] blur-[130px]"></div>
+          </div>
+
+          <div className="min-h-screen font-sans antialiased selection:bg-[#0A84FF]/30 tracking-tight relative z-10">
+            <div className="max-w-5xl mx-auto p-4 md:p-6 flex flex-col md:flex-row gap-5">
+              
+              <div className="flex-1 flex flex-col gap-5">
+                
+                <div className="bg-[#1C1C1E]/60 backdrop-blur-xl rounded-[24px] p-4 flex flex-col sm:flex-row items-center justify-between gap-4 border border-white/10 shadow-lg">
+                  <h1 className="text-xl font-bold tracking-widest text-white uppercase pl-2">
+                    PROGRESS PROTOCOL
+                  </h1>
+                  
+                  <div className="flex items-center gap-3 cursor-pointer">
+                    <button 
+                      onClick={goToPreviousDay}
+                      className="p-2.5 bg-[#2C2C2E]/70 backdrop-blur-sm border border-white/5 hover:bg-[#3A3A3C]/90 hover:scale-105 active:bg-[#4A4A4C] active:scale-90 rounded-full transition-all duration-300 ease-out text-[#0A84FF]"
+                    >
+                      <ChevronLeftIcon size={20} />
+                    </button>
+                    
+                    <button 
+                      onClick={toggleCalendar}
+                      className="flex items-center gap-3 px-4 py-2 bg-[#2C2C2E]/70 backdrop-blur-sm border border-white/5 hover:bg-[#3A3A3C]/90 hover:-translate-y-0.5 hover:shadow-lg active:scale-95 rounded-[18px] transition-all duration-300 ease-out text-left"
+                    >
+                      <CalendarIcon size={18} className="text-[#0A84FF]" />
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-medium text-neutral-400 uppercase tracking-widest leading-none mb-1">
+                          {currentDate.toLocaleDateString('en-US', { weekday: 'long' })}
+                        </span>
+                        <span className="text-[15px] font-semibold text-white leading-none">
+                          {currentDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                      </div>
+                    </button>
+
+                    <button 
+                      onClick={goToNextDay}
+                      className="p-2.5 bg-[#2C2C2E]/70 backdrop-blur-sm border border-white/5 hover:bg-[#3A3A3C]/90 hover:scale-105 active:bg-[#4A4A4C] active:scale-90 rounded-full transition-all duration-300 ease-out text-[#0A84FF]"
+                    >
+                      <ChevronRightIcon size={20} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-[#1C1C1E]/60 backdrop-blur-xl border border-white/10 shadow-lg rounded-[24px] p-5 flex flex-col cursor-default">
+                  <h2 className="text-[13px] font-semibold mb-4 text-neutral-400 uppercase tracking-widest pl-1">
+                    Tasks
+                  </h2>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                    {currentDayData.tasks.map(task => (
+                      <div 
+                        key={task.id}
+                        className={`group flex items-center justify-between p-4 rounded-[18px] transition-all duration-500 ease-out cursor-pointer hover:-translate-y-0.5
+                          ${task.completed 
+                            ? 'bg-[#30D158]/10 border border-[#30D158]/40 shadow-[0_0_15px_rgba(48,209,88,0.15)] task-success' 
+                            : 'bg-[#2C2C2E]/60 backdrop-blur-md hover:bg-[#3A3A3C]/80 border border-white/5 hover:border-white/10 active:scale-[0.98] hover:shadow-lg'}`}
+                        onClick={() => toggleTask(task.id)}
+                      >
+                        <div className="flex items-center gap-3.5 flex-1">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] border-[1.5px] 
+                            ${task.completed 
+                              ? 'bg-[#30D158] border-[#30D158] shadow-[0_0_12px_rgba(48,209,88,0.6)] scale-110' 
+                              : 'border-neutral-500 bg-transparent group-hover:border-[#0A84FF]/60 group-hover:bg-[#0A84FF]/10'}`}
+                          >
+                            <CheckIcon size={14} strokeWidth={3} className={`text-white transition-all duration-300 ${task.completed ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`} />
+                          </div>
+                          <span className={`text-[15px] transition-all duration-500 select-none
+                            ${task.completed ? 'text-white font-bold drop-shadow-[0_0_8px_rgba(48,209,88,0.6)] tracking-wide' : 'text-white font-medium'}`}
+                          >
+                            {task.text}
+                          </span>
+                        </div>
+                        
+                        {!task.isFixed && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); removeTask(task.id); }}
+                            className="opacity-0 group-hover:opacity-100 p-2 text-neutral-500 hover:text-[#FF453A] hover:bg-[#FF453A]/15 hover:rotate-12 active:scale-90 rounded-full transition-all duration-300"
+                          >
+                            <Trash2Icon size={18} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <form onSubmit={addTask} className="relative mt-2 cursor-pointer">
+                    <input 
+                      type="text" 
+                      value={newTaskText}
+                      onChange={(e) => setNewTaskText(e.target.value)}
+                      placeholder="Add a new task..."
+                      className="w-full bg-[#2C2C2E]/60 backdrop-blur-md text-white text-[15px] rounded-[18px] px-4 py-3.5 focus:outline-none focus:bg-[#3A3A3C]/80 border border-white/5 focus:border-white/20 shadow-inner transition-all placeholder:text-neutral-500 pr-12 cursor-pointer"
+                    />
+                    <button 
+                      type="submit"
+                      disabled={!newTaskText.trim()}
+                      className="absolute right-2 top-2 bottom-2 aspect-square bg-[#0A84FF] hover:bg-[#2094FF] hover:scale-105 hover:shadow-[0_0_15px_rgba(10,132,255,0.4)] text-white disabled:bg-[#2C2C2E]/80 disabled:hover:scale-100 disabled:hover:shadow-none disabled:text-neutral-600 rounded-[12px] flex items-center justify-center transition-all duration-300 active:scale-90"
+                    >
+                      <PlusIcon size={20} />
+                    </button>
+                  </form>
+                </div>
+
+                <div className="bg-[#1C1C1E]/60 backdrop-blur-xl border border-white/10 shadow-lg rounded-[24px] p-5 cursor-default relative">
+                  <h2 className="text-[13px] font-semibold mb-3 text-neutral-400 uppercase tracking-widest pl-1 flex items-center gap-2">
+                    <QuoteIcon size={14} className="text-[#0A84FF]" />
+                    Reflection
+                  </h2>
+                  <textarea
+                    value={currentDayData.note}
+                    onChange={(e) => updateCurrentDayData({ note: e.target.value })}
+                    placeholder="How was your day?"
+                    className="w-full h-24 bg-[#2C2C2E]/60 backdrop-blur-md text-white text-[15px] rounded-[18px] p-4 focus:outline-none focus:bg-[#3A3A3C]/80 border border-white/5 focus:border-white/20 shadow-inner transition-all resize-none placeholder:text-neutral-500 leading-relaxed cursor-pointer"
+                  />
+                </div>
+
+              </div>
+
+              <div className="w-full md:w-48 flex flex-row md:flex-col gap-5 cursor-default">
+                
+                <div className="bg-[#1C1C1E]/60 backdrop-blur-xl border border-white/10 shadow-lg rounded-[24px] p-5 flex-1 flex flex-col items-center">
+                  <h3 className="text-[12px] font-semibold text-neutral-400 uppercase tracking-widest mb-1">Water</h3>
+                  <span className={`text-[17px] font-bold mb-4 ${currentDayData.water >= 3.0 ? 'text-[#30D158]' : 'text-[#32ADE6]'}`}>
+                    {currentDayData.water.toFixed(1)}L
+                  </span>
+                  
+                  <div className="relative h-48 w-14 bg-[#2C2C2E]/60 backdrop-blur-sm border border-white/5 shadow-inner rounded-full overflow-hidden flex flex-col justify-end">
+                    <div 
+                      className={`w-full transition-all duration-[800ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] rounded-full ${currentDayData.water >= 3.0 ? 'bg-[#30D158]' : 'bg-gradient-to-t from-[#0A84FF] to-[#32ADE6]'}`}
+                      style={{ height: `${Math.min((currentDayData.water / 3.0) * 100, 100)}%` }}
+                    />
+                  </div>
+
+                  <div className="flex gap-2 mt-5 w-full">
+                    <button 
+                      onClick={() => updateWater(-0.5)}
+                      disabled={currentDayData.water <= 0}
+                      className="flex-1 py-2.5 rounded-[14px] bg-[#2C2C2E]/60 backdrop-blur-sm border border-white/5 hover:bg-[#3A3A3C]/90 hover:border-white/10 hover:scale-[1.03] active:bg-[#4A4A4C] active:scale-95 text-neutral-300 text-[13px] font-semibold transition-all duration-300 disabled:opacity-40 disabled:hover:scale-100 cursor-pointer"
+                    >
+                      -0.5
+                    </button>
+                    <button 
+                      onClick={() => updateWater(0.5)}
+                      className="flex-1 py-2.5 rounded-[14px] bg-[#32ADE6]/20 backdrop-blur-sm border border-[#32ADE6]/30 hover:bg-[#32ADE6]/30 hover:scale-[1.03] hover:shadow-[0_0_12px_rgba(50,173,230,0.3)] active:bg-[#32ADE6]/40 active:scale-95 text-[#32ADE6] text-[13px] font-semibold transition-all duration-300 cursor-pointer"
+                    >
+                      +0.5
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+          </div>
+
+          {/* Centered Calendar Modal (Overlays Everything) */}
+          {isCalendarOpen && (
+            <div className="fixed inset-0 z-[999] flex items-center justify-center pointer-events-auto cursor-default">
+              {/* Dimmed Blurred Background */}
+              <div 
+                className="absolute inset-0 bg-[#050507]/60 animate-blur-overlay" 
+                onClick={() => setIsCalendarOpen(false)}
+              />
+              
+              {/* Calendar Box */}
+              <div className="relative z-10 bg-[#1C1C1E]/90 backdrop-blur-2xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.6)] rounded-[24px] p-5 w-[300px] animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex justify-between items-center mb-5">
+                  <button onClick={() => changeCalendarMonth(-1)} className="p-1.5 active:bg-white/10 active:scale-90 rounded-full transition-all text-[#0A84FF] cursor-pointer">
+                    <ChevronLeftIcon size={18} />
+                  </button>
+                  <span className="text-[15px] font-semibold text-white tracking-tight">
+                    {calendarViewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                  </span>
+                  <button onClick={() => changeCalendarMonth(1)} className="p-1.5 active:bg-white/10 active:scale-90 rounded-full transition-all text-[#0A84FF] cursor-pointer">
+                    <ChevronRightIcon size={18} />
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                  {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(d => (
+                    <div key={d} className="text-[11px] font-semibold text-neutral-500">{d}</div>
+                  ))}
+                </div>
+                
+                <div className="grid grid-cols-7 gap-1 text-center">
+                  {Array.from({ length: startingBlankDays }).map((_, i) => (
+                    <div key={`blank-${i}`} />
+                  ))}
+                  {Array.from({ length: daysInMonth }).map((_, i) => {
+                    const day = i + 1;
+                    const isSelected = day === currentDate.getDate() && 
+                                      calendarViewDate.getMonth() === currentDate.getMonth() && 
+                                      calendarViewDate.getFullYear() === currentDate.getFullYear();
+                    const isToday = day === new Date().getDate() && 
+                                    calendarViewDate.getMonth() === new Date().getMonth() && 
+                                    calendarViewDate.getFullYear() === new Date().getFullYear();
+                    
+                    return (
+                      <button
+                        key={day}
+                        onClick={() => selectDate(day)}
+                        className={`text-[15px] p-2 rounded-full transition-all active:scale-90 cursor-pointer ${
+                          isSelected 
+                            ? 'bg-[#0A84FF] text-white font-semibold shadow-md' 
+                            : isToday
+                              ? 'text-[#0A84FF] font-semibold hover:bg-[#2C2C2E]/80 active:bg-[#3A3A3C]'
+                              : 'text-white hover:bg-[#2C2C2E]/80 active:bg-[#3A3A3C]'
+                        }`}
+                      >
+                        {day}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
+
+
